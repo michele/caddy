@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,7 @@ func initHTTPMetrics(ctx caddy.Context, metrics *Metrics) {
 	registry := ctx.GetMetricsRegistry()
 	basicLabels := []string{"server", "handler"}
 	if metrics.PerHost {
-		basicLabels = append(basicLabels, "host")
+		basicLabels = append(basicLabels, "host", "path")
 	}
 	metrics.httpMetrics.requestInFlight = promauto.With(registry).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: ns,
@@ -69,7 +70,7 @@ func initHTTPMetrics(ctx caddy.Context, metrics *Metrics) {
 
 	httpLabels := []string{"server", "handler", "code", "method"}
 	if metrics.PerHost {
-		httpLabels = append(httpLabels, "host")
+		httpLabels = append(httpLabels, "host", "path")
 	}
 	metrics.httpMetrics.requestDuration = promauto.With(registry).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: ns,
@@ -136,6 +137,8 @@ func (h *metricsInstrumentedHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 	if h.metrics.PerHost {
 		labels["host"] = strings.ToLower(r.Host)
 		statusLabels["host"] = strings.ToLower(r.Host)
+		labels["path"] = NormalizeURLPathRegex(r.URL.Path)
+		statusLabels["path"] = labels["path"]
 	}
 
 	inFlight := h.metrics.httpMetrics.requestInFlight.With(labels)
@@ -211,4 +214,19 @@ func computeApproximateRequestSize(r *http.Request) int {
 		s += int(r.ContentLength)
 	}
 	return s
+}
+func NormalizeURLPathRegex(path string) string {
+	// Remove query parameters and fragments
+	if idx := strings.Index(path, "?"); idx != -1 {
+		path = path[:idx]
+	}
+	if idx := strings.Index(path, "#"); idx != -1 {
+		path = path[:idx]
+	}
+
+	// Combined regex for all ID patterns
+	// This matches: numbers, UUIDs, KSUIDs, and long hex strings
+	idPattern := regexp.MustCompile(`/(-?\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9A-Za-z]{27}|[0-9a-fA-F]{16,})(?=/|$)`)
+
+	return idPattern.ReplaceAllString(path, "/X")
 }
