@@ -225,8 +225,8 @@ func NormalizeURLPathRegex(path string) string {
 	}
 
 	// Combined regex for all ID patterns
-	// This matches: numbers, UUIDs, KSUIDs, and long hex strings
-	idPattern := regexp.MustCompile(`/(-?\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9A-Za-z]{27}|[0-9a-fA-F]{16,})(?=/|$)`)
+	// This matches: numbers, UUIDs and KSUIDs
+	idPattern := regexp.MustCompile(`/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[a-zA-Z0-9]{27}|\d+)`)
 
 	return idPattern.ReplaceAllString(path, "/X")
 }
