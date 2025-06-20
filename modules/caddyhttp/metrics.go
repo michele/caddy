@@ -137,7 +137,7 @@ func (h *metricsInstrumentedHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 	if h.metrics.PerHost {
 		labels["host"] = strings.ToLower(r.Host)
 		statusLabels["host"] = strings.ToLower(r.Host)
-		labels["path"] = NormalizeURLPathRegex(r.URL.Path)
+		labels["path"] = NormalizeURLPath(r.URL.Path)
 		statusLabels["path"] = labels["path"]
 	}
 
@@ -229,4 +229,64 @@ func NormalizeURLPathRegex(path string) string {
 	idPattern := regexp.MustCompile(`/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[a-zA-Z0-9]{27}|\d+)`)
 
 	return idPattern.ReplaceAllString(path, "/X")
+}
+
+func NormalizeURLPath(path string) string {
+	// Remove query parameters and fragments if present
+	if idx := strings.Index(path, "?"); idx != -1 {
+		path = path[:idx]
+	}
+	if idx := strings.Index(path, "#"); idx != -1 {
+		path = path[:idx]
+	}
+
+	// Split path into segments
+	segments := strings.Split(path, "/")
+
+	for i, segment := range segments {
+		if isID(segment) {
+			segments[i] = "X"
+		}
+	}
+
+	return strings.Join(segments, "/")
+}
+
+// isID checks if a segment is likely an ID (number, UUID, or KSUID)
+func isID(segment string) bool {
+	if segment == "" {
+		return false
+	}
+
+	// Check if it's a number (including negative numbers)
+	if matched, _ := regexp.MatchString(`^-?\d+$`, segment); matched {
+		return true
+	}
+
+	// Check if it's a UUID (8-4-4-4-12 format with hyphens)
+	if matched, _ := regexp.MatchString(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`, segment); matched {
+		return true
+	}
+
+	// Check if it's a KSUID (27 characters, base62-ish)
+	if matched, _ := regexp.MatchString(`^[0-9A-Za-z]{27}$`, segment); matched {
+		return true
+	}
+
+	// Check if it's a hex string (common for IDs) - 16+ characters of hex
+	if matched, _ := regexp.MatchString(`^[0-9a-fA-F]{16,}$`, segment); matched {
+		return true
+	}
+
+	// Check if it's an ordering key (i.e. a.{ID}.u.{UserID})
+	if matched, _ := regexp.MatchString(`^a\.[0-9a-zA-Z\-]+\.u\.\d+$`, segment); matched {
+		return true
+	}
+
+	// Check if it's an email
+	if matched, _ := regexp.MatchString(`^[^@]+@[^@]+\.[^@]+$`, segment); matched {
+		return true
+	}
+
+	return false
 }
